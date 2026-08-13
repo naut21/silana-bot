@@ -64,6 +64,11 @@ import {
 } from './lib/mongoDB.js' */
 import storeSys from './lib/store2.js'
 const store = storeSys.makeInMemoryStore()
+const _baileysMod = await import('@adiwajshing/baileys')
+const _baileys = {
+    ..._baileysMod,
+    ...(_baileysMod.default || {})
+}
 const {
     DisconnectReason,
     useMultiFileAuthState,
@@ -76,7 +81,7 @@ const {
     jidNormalizedUser,
     PHONENUMBER_MCC,
     Browsers
-} = await (await import('@adiwajshing/baileys')).default;
+} = _baileys;
 
 import readline from "readline"
 import {
@@ -100,11 +105,18 @@ const msgRetryCounterCache = new NodeCache()
 const msgRetryCounterMap = (MessageRetryMap) => {};
 const version = await (async () => {
     try {
-        return (await fetchLatestWaWebVersion()).version
-    } catch {
-        return (await fetchLatestBaileysVersion()).version
-    }
+        if (typeof fetchLatestWaWebVersion === 'function') return (await fetchLatestWaWebVersion()).version
+    } catch {}
+    try {
+        if (typeof fetchLatestBaileysVersion === 'function') return (await fetchLatestBaileysVersion()).version
+    } catch {}
+    return [2, 3000, 1043857760]
 })();
+
+const isValidNumber = (number) => {
+    const mcc = Object.keys(PHONENUMBER_MCC || {})
+    return mcc.length ? mcc.some(v => number.startsWith(v)) : number.length >= 8
+}
 
 
 protoType()
@@ -187,7 +199,7 @@ const connectionOptions = {
         level: 'fatal'
     }),
     auth: state,
-    browser: Browsers.appropriate('Safari'),
+    browser: ['Mac OS', 'Safari', '10.15.7'],
     printQRInTerminal: false,
     version,
     getMessage: async (key) => {
@@ -214,14 +226,14 @@ if (global.pairingCode && !state.creds.registered) {
     if (!!global.info.pairingNumber) {
         global.phoneNumber = global.info.pairingNumber.replace(/[^0-9]/g, '')
 
-        if (!Object.keys(PHONENUMBER_MCC).some(v => global.phoneNumber.startsWith(v))) {
+        if (!isValidNumber(global.phoneNumber)) {
             console.log(chalk.bgBlack(chalk.redBright("Start with your country's WhatsApp code, Example : 212xxx")))
             process.exit(0)
         }
     } else {
         global.phoneNumber = await question(chalk.bgBlack(chalk.greenBright(`Please type your WhatsApp number : `)))
         global.phoneNumber = global.phoneNumber.replace(/[^0-9]/g, '')
-        while (!Object.keys(PHONENUMBER_MCC).some(v => global.phoneNumber.startsWith(v))) {
+        while (!isValidNumber(global.phoneNumber)) {
             console.log(chalk.bgBlack(chalk.redBright("Start with your country's WhatsApp code, Example : 212xxx")))
 
             global.phoneNumber = await question(chalk.bgBlack(chalk.greenBright(`Please type your WhatsApp number : `)))
@@ -303,7 +315,7 @@ async function connectionUpdate(update) {
     }
 
     const code = lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.output?.payload?.statusCode
-    if (code && code !== DisconnectReason.loggedOut && conn?.ws.readyState !== ws.default.CONNECTING) {
+    if (code && code !== (DisconnectReason?.loggedOut ?? 401) && conn?.ws.readyState !== ws.default.CONNECTING) {
         console.log(await global.reloadHandler(true).catch(console.error))
         global.timestamp.connect = new Date
     }
