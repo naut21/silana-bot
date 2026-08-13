@@ -1,0 +1,7 @@
+{
+  "name": "@adiwajshing/baileys",
+  "version": "7.0.0",
+  "type": "module",
+  "main": "index.js",
+  "dependencies": { "baileys": "7.0.0-rc14" }
+}
