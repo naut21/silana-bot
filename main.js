@@ -231,6 +231,13 @@ global.conn = makeWASocket(connectionOptions)
 conn.isInit = false
 conn.connectionUpdate = connectionUpdate.bind(global.conn)
 conn.ev.on('connection.update', conn.connectionUpdate)
+conn.ev.on('connection.update', u => console.log(chalk.gray('[RAW] ' + JSON.stringify({
+    connection: u.connection,
+    qr: u.qr ? 'si' : undefined,
+    isNewLogin: u.isNewLogin,
+    error: u.lastDisconnect?.error?.message,
+    status: u.lastDisconnect?.error?.output?.statusCode
+}))))
 console.log(chalk.cyan('[i] Connecting to WhatsApp...'))
 
 if (!opts['test']) {
@@ -279,6 +286,7 @@ function clearTmp() {
 let codeRequested = false
 
 async function connectionUpdate(update) {
+  try {
     const {
         connection,
         lastDisconnect,
@@ -289,7 +297,7 @@ async function connectionUpdate(update) {
 
     if (isNewLogin) conn.isInit = true
 
-    if (qr && global.pairingCode && global.phoneNumber && !conn.authState.creds.registered && !codeRequested) {
+    if (qr && global.pairingCode && global.phoneNumber && !state.creds.registered && !codeRequested) {
         codeRequested = true
         try {
             let code = await conn.requestPairingCode(global.phoneNumber)
@@ -315,9 +323,13 @@ async function connectionUpdate(update) {
     if (connection == 'close') {
         console.log(chalk.yellow(`📡 Connection has been lost. delete the session and retake the session to run the Bot`));
     }
+  } catch (e) {
+    console.log(chalk.bgRed(chalk.white('[X] connectionUpdate error :')), e?.message || e)
+  }
 }
 
 process.on('uncaughtException', console.error)
+process.on('unhandledRejection', e => console.log(chalk.bgRed(chalk.white('[X] unhandledRejection :')), e?.message || e))
 let isInit = true;
 
 let handler = await import('./handler.js');
