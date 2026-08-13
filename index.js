@@ -2,7 +2,6 @@ import './config.js'
 import { fetchLatestBaileysVersion } from '@adiwajshing/baileys'
 import cfont from "cfonts";
 import { spawn } from 'child_process';
-import { createInterface } from "readline";
 import { promises as fsPromises } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -56,8 +55,6 @@ const folderPath = './tmp';
         
 let isRunning = false;
 
-const rl = createInterface(process.stdin, process.stdout)
-
 async function start(file) {
     if (isRunning) return;
   isRunning = true;
@@ -83,18 +80,12 @@ async function start(file) {
         isRunning = false
         console.error("[❗] Exit with code :", code)
         if (code !== 0) return start(file)
-        watchFile(args[0], () => {
-            unwatchFile(args[0])
+        fs.watchFile(args[0], () => {
+            fs.unwatchFile(args[0])
             start(file)
         })
     })
     
-    let opts = new Object(yargs(process.argv.slice(2)).exitProcess(false).parse())
-    if (!opts["test"])
-        if (!rl.listenerCount()) rl.on("line", line => {
-            p.emit("message", line.trim())
-        })
-
 
 const packageJsonPath = join(dirname(currentFilePath), './package.json');
 const pluginsFolder = join(dirname(currentFilePath), 'plugins');
