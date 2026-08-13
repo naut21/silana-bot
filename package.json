@@ -85,6 +85,7 @@
     "@vitalets/google-translate-api":"*",
     "@bochilteam/scraper-sosmed":"*",
     "@bochilteam/scraper":"*",
-    "yargs": "^17.7.1"
+    "yargs": "^17.7.1",
+    "libphonenumber-js":"*"
   }
 }
