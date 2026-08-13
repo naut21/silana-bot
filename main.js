@@ -83,7 +83,6 @@ const {
     Browsers
 } = _baileys;
 
-import readline from "readline"
 import {
     parsePhoneNumber
 } from "libphonenumber-js"
@@ -95,11 +94,6 @@ const {
     chain
 } = lodash
 const PORT = process.env.PORT || process.env.SERVER_PORT || 3000
-const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout
-})
-const question = (text) => new Promise((resolve) => rl.question(text, resolve))
 import NodeCache from "node-cache"
 const msgRetryCounterCache = new NodeCache()
 const msgRetryCounterMap = (MessageRetryMap) => {};
@@ -219,34 +213,25 @@ const connectionOptions = {
 }
 
 global.pairingCode = true
-global.phoneNumber = ''
+global.phoneNumber = (global.opts['number'] || process.env.PAIRING_NUMBER || global.info.pairingNumber || '').toString().replace(/[^0-9]/g, '')
 
 if (global.pairingCode && !state.creds.registered) {
-
-    if (!!global.info.pairingNumber) {
-        global.phoneNumber = global.info.pairingNumber.replace(/[^0-9]/g, '')
-
-        if (!isValidNumber(global.phoneNumber)) {
-            console.log(chalk.bgBlack(chalk.redBright("Start with your country's WhatsApp code, Example : 212xxx")))
-            process.exit(0)
-        }
-    } else {
-        global.phoneNumber = await question(chalk.bgBlack(chalk.greenBright(`Please type your WhatsApp number : `)))
-        global.phoneNumber = global.phoneNumber.replace(/[^0-9]/g, '')
-        while (!isValidNumber(global.phoneNumber)) {
-            console.log(chalk.bgBlack(chalk.redBright("Start with your country's WhatsApp code, Example : 212xxx")))
-
-            global.phoneNumber = await question(chalk.bgBlack(chalk.greenBright(`Please type your WhatsApp number : `)))
-            global.phoneNumber = global.phoneNumber.replace(/[^0-9]/g, '')
-        }
-        rl.close()
+    if (!global.phoneNumber) {
+        console.log(chalk.bgBlack(chalk.redBright('No pairing number. Put it in config.js (global.info.pairingNumber) or run : npm start -- --number 5049xxxxxxx')))
+        process.exit(0)
     }
+    if (!isValidNumber(global.phoneNumber)) {
+        console.log(chalk.bgBlack(chalk.redBright("Start with your country's WhatsApp code, Example : 212xxx")))
+        process.exit(0)
+    }
+    console.log(chalk.bgBlack(chalk.greenBright(`Pairing number : ${global.phoneNumber}`)))
 }
 
 global.conn = makeWASocket(connectionOptions)
 conn.isInit = false
 conn.connectionUpdate = connectionUpdate.bind(global.conn)
 conn.ev.on('connection.update', conn.connectionUpdate)
+console.log(chalk.cyan('[i] Connecting to WhatsApp...'))
 
 if (!opts['test']) {
     if (global.db) {
