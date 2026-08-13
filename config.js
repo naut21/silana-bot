@@ -16,7 +16,7 @@ global.owner = [
 
 global.info = {
  nomerbot: '212605784394',
- pairingNumber: '212693227969',
+ pairingNumber: '',
  nameown: 'Nour',
  nomerown: '212717457920',
  packname: 'sticker by ',
