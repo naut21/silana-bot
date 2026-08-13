@@ -97,21 +97,14 @@ const rl = readline.createInterface({
 const question = (text) => new Promise((resolve) => rl.question(text, resolve))
 import NodeCache from "node-cache"
 const msgRetryCounterCache = new NodeCache()
-
-async function resolveVersion() {
+const msgRetryCounterMap = (MessageRetryMap) => {};
+const version = await (async () => {
     try {
-        const {
-            version
-        } = await fetchLatestWaWebVersion()
-        return version
+        return (await fetchLatestWaWebVersion()).version
     } catch {
-        const {
-            version
-        } = await fetchLatestBaileysVersion()
-        return version
+        return (await fetchLatestBaileysVersion()).version
     }
-}
-const version = await resolveVersion()
+})();
 
 
 protoType()
@@ -170,37 +163,8 @@ let {
     saveCreds
 } = await useMultiFileAuthState(path.resolve('./system/sessions'))
 
-async function askPhoneNumber() {
-    while (true) {
-        const answer = await question(chalk.greenBright('\n> 🌿 VINCULACIÓN <\n\n🍃 Número con código de país\n› '))
-        const phone = answer.replace(/\D/g, '')
-
-        if (phone.length < 8) {
-            console.log(chalk.redBright('\nEl número ingresado es inválido\n'))
-            continue
-        }
-
-        const confirm = await question(`\n¿Vinculo el número ${phone}? [s/n] › `)
-        if (/^s/i.test(confirm.trim())) return phone
-
-        console.log('')
-    }
-}
-
-global.pairingCode = true
-global.phoneNumber = (global.info?.pairingNumber || '').replace(/\D/g, '')
-if (!state.creds.registered && !global.phoneNumber) global.phoneNumber = await askPhoneNumber()
-
 const connectionOptions = {
-    version,
-    auth: state,
-    logger: Pino({
-        level: 'silent'
-    }),
-    browser: Browsers.appropriate('Safari'),
-    printQRInTerminal: false,
-    markOnlineOnConnect: false,
-    syncFullHistory: false,
+    pairingCode: true,
     patchMessageBeforeSending: (message) => {
         const requiresPatch = !!(message.buttonsMessage || message.templateMessage || message.listMessage);
         if (requiresPatch) {
@@ -218,6 +182,14 @@ const connectionOptions = {
         }
         return message;
     },
+    msgRetryCounterMap,
+    logger: Pino({
+        level: 'fatal'
+    }),
+    auth: state,
+    browser: Browsers.appropriate('Safari'),
+    printQRInTerminal: false,
+    version,
     getMessage: async (key) => {
         let jid = jidNormalizedUser(key.remoteJid)
         let msg = await store.loadMessage(jid, key.id)
@@ -229,7 +201,34 @@ const connectionOptions = {
     keepAliveIntervalMs: 10000,
     emitOwnEvents: true,
     fireInitQueries: true,
-    generateHighQualityLinkPreview: true
+    generateHighQualityLinkPreview: true,
+    syncFullHistory: true,
+    markOnlineOnConnect: true
+}
+
+global.pairingCode = true
+global.phoneNumber = ''
+
+if (global.pairingCode && !state.creds.registered) {
+
+    if (!!global.info.pairingNumber) {
+        global.phoneNumber = global.info.pairingNumber.replace(/[^0-9]/g, '')
+
+        if (!Object.keys(PHONENUMBER_MCC).some(v => global.phoneNumber.startsWith(v))) {
+            console.log(chalk.bgBlack(chalk.redBright("Start with your country's WhatsApp code, Example : 212xxx")))
+            process.exit(0)
+        }
+    } else {
+        global.phoneNumber = await question(chalk.bgBlack(chalk.greenBright(`Please type your WhatsApp number : `)))
+        global.phoneNumber = global.phoneNumber.replace(/[^0-9]/g, '')
+        while (!Object.keys(PHONENUMBER_MCC).some(v => global.phoneNumber.startsWith(v))) {
+            console.log(chalk.bgBlack(chalk.redBright("Start with your country's WhatsApp code, Example : 212xxx")))
+
+            global.phoneNumber = await question(chalk.bgBlack(chalk.greenBright(`Please type your WhatsApp number : `)))
+            global.phoneNumber = global.phoneNumber.replace(/[^0-9]/g, '')
+        }
+        rl.close()
+    }
 }
 
 global.conn = makeWASocket(connectionOptions)
@@ -279,7 +278,6 @@ function clearTmp() {
 }
 
 let codeRequested = false
-let reconnectAttempts = 0
 
 async function connectionUpdate(update) {
     const {
@@ -291,59 +289,32 @@ async function connectionUpdate(update) {
     global.stopped = connection;
 
     if (isNewLogin) conn.isInit = true
-    if (global.db.data == null) loadDatabase()
 
-    if (qr && !conn.authState.creds.registered && !codeRequested) {
+    if (qr && global.pairingCode && global.phoneNumber && !conn.authState.creds.registered && !codeRequested) {
         codeRequested = true
         try {
-            const code = await conn.requestPairingCode(global.phoneNumber)
-            const formatted = code?.match(/.{1,4}/g)?.join('-') || code
-
-            console.log(chalk.greenBright(`\n📱 Código para ${global.phoneNumber}\n\n    ${formatted}\n`))
-            console.log('WhatsApp › Dispositivos vinculados › Vincular con número de teléfono')
-            console.log('Tienes ~2 minutos antes de que caduque.\n')
-        } catch (error) {
-            console.error(chalk.redBright('\n❌ WhatsApp rechazó la solicitud de vinculación:'))
-            console.error(`   ${error?.message || error}`)
-            console.error('   No teclees ningún código, no sería válido.\n')
+            let code = await conn.requestPairingCode(global.phoneNumber)
+            code = code?.match(/.{1,4}/g)?.join("-") || code
+            console.log(chalk.yellow(chalk.bgGreen(`Your Pairing Code : `)), chalk.black(chalk.white(code)))
+        } catch (e) {
+            console.log(chalk.bgBlack(chalk.redBright(`Failed to request pairing code : ${e?.message || e}`)))
             codeRequested = false
         }
     }
 
-    if (connection === "open") {
-        reconnectAttempts = 0
-        codeRequested = false
+    const code = lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.output?.payload?.statusCode
+    if (code && code !== DisconnectReason.loggedOut && conn?.ws.readyState !== ws.default.CONNECTING) {
+        console.log(await global.reloadHandler(true).catch(console.error))
         global.timestamp.connect = new Date
-        try {
-            rl.close()
-        } catch {}
-        console.log(chalk.bgGreen(chalk.white('The bot is ON')));
     }
-
+    // console.log(JSON.stringify(update, null, 4))
+    if (global.db.data == null) loadDatabase()
+    if (connection === "open") {
+    codeRequested = false
+    console.log(chalk.bgGreen(chalk.white('The bot is ON')));
+    }
     if (connection == 'close') {
-        const error = lastDisconnect?.error
-        const statusCode = error?.output?.statusCode || error?.output?.payload?.statusCode
-
-        if (statusCode === DisconnectReason.loggedOut) {
-            console.log(chalk.redBright('\nLa sesión fue cerrada. Borra la carpeta "./system/sessions" y vuelve a vincular.\n'))
-            return
-        }
-
-        if (statusCode === DisconnectReason.restartRequired) {
-            console.log(chalk.yellow('\nReiniciando conexión...\n'))
-            return global.reloadHandler(true).catch(console.error)
-        }
-
-        reconnectAttempts++
-        if (reconnectAttempts > 5) {
-            console.error(chalk.redBright('\n5 reconexiones fallidas seguidas. Me detengo.'))
-            console.error(`Último error: ${error?.message || error}\n`)
-            return
-        }
-
-        const delay = Math.min(reconnectAttempts * 2000, 10000)
-        console.log(chalk.yellow(`\n🌱 Reconectando en ${delay / 1000}s (intento ${reconnectAttempts}/5)...\n`))
-        setTimeout(() => global.reloadHandler(true).catch(console.error), delay)
+        console.log(chalk.yellow(`📡 Connection has been lost. delete the session and retake the session to run the Bot`));
     }
 }
 
