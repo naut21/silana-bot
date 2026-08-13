@@ -245,6 +245,8 @@ if (global.pairingCode && !state.creds.registered) {
 
 global.conn = makeWASocket(connectionOptions)
 conn.isInit = false
+conn.connectionUpdate = connectionUpdate.bind(global.conn)
+conn.ev.on('connection.update', conn.connectionUpdate)
 
 if (!opts['test']) {
     if (global.db) {
@@ -315,7 +317,7 @@ async function connectionUpdate(update) {
     }
 
     const code = lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.output?.payload?.statusCode
-    if (code && code !== (DisconnectReason?.loggedOut ?? 401) && conn?.ws.readyState !== ws.default.CONNECTING) {
+    if (code && code !== (DisconnectReason?.loggedOut ?? 401) && conn?.ws?.readyState !== 0) {
         console.log(await global.reloadHandler(true).catch(console.error))
         global.timestamp.connect = new Date
     }
@@ -379,6 +381,7 @@ global.reloadHandler = async function(restatConn) {
     conn.pollUpdate = handler.pollUpdate.bind(global.conn);
     conn.groupsUpdate = handler.groupsUpdate.bind(global.conn)
     // conn.onDelete = handler.deleteUpdate.bind(global.conn)
+    if (conn.connectionUpdate) conn.ev.off('connection.update', conn.connectionUpdate)
     conn.connectionUpdate = connectionUpdate.bind(global.conn)
     conn.credsUpdate = saveCreds.bind(global.conn)
 
